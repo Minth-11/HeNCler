@@ -729,5 +729,14 @@ EBC
 
 \end_layout
 
+\begin_layout Paragraph
+BCOT
+\end_layout
+
+\begin_layout Standard
+is a recent state-of-the-art optimal transport-based method for dyadic datasets.
+ 
+\end_layout
+
 \end_body
 \end_document
