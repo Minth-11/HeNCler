@@ -1,0 +1,45 @@
+%% LyX 2.4.0 created this file.  For more info, see https://www.lyx.org/.
+%% Do not edit unless you really know what you are doing.
+\documentclass[american]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{array}
+\usepackage{multirow}
+
+\makeatletter
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LyX specific LaTeX commands.
+%% Because html converters don't know tabularnewline
+\providecommand{\tabularnewline}{\\}
+
+\makeatother
+
+\usepackage{babel}
+\begin{document}
+\begin{table}
+
+\caption{Reproduction of table 2}
+
+\centering{}%
+\begin{tabular}{llllllllr}
+\hline 
+\multirow{2}{*}{Method} & \multicolumn{2}{c}{ACM} & \multicolumn{2}{c}{DBLP} & \multicolumn{2}{c}{Pubmed} & \multicolumn{2}{c}{Wiki}\tabularnewline
+\cline{2-9}
+ & NMI & Coh & NMI & Coh & NMI & Coh & NMI & Coh\tabularnewline
+\hline 
+SVD &  &  &  &  &  &  &  & \tabularnewline
+KPCA &  &  &  &  &  &  &  & \tabularnewline
+KSVD &  &  &  &  &  &  &  & \tabularnewline
+BCOT & $0.372\pm0.026$ &  & $0.231\pm0.063$ &  & $0.165\pm0.013$ &  & $0.476\pm0.015$ & $0.6359\pm0.02$\tabularnewline
+EBC &  &  &  &  &  &  &  & \tabularnewline
+\hline 
+\end{tabular}
+\end{table}
+
+
+\paragraph{BCOT }
+
+is a recent state-of-the-art optimal transport-based biclustering
+method for dyadic datasets, generalizing several classical byclustering
+methods.
+\end{document}
