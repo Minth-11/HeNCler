@@ -59,14 +59,14 @@ class EBC:
             objective: the final objective value
             max_it: the number of iterations that the algorithm has run
         """
-        if verbose: print "Running EBC on a %d-d sparse matrix with size %s ..." % (self.dim, str(self.pXY.N))
+        if verbose: print( "Running EBC on a %d-d sparse matrix with size %s ..." % (self.dim, str(self.pXY.N)) )
         # Step 1: initialization steps
         self.pX = self.calculate_marginals(self.pXY)
         if assigned_clusters:
-            if verbose: print "Using specified clusters, with cluster number on each axis: %s ..." % self.K
+            if verbose: print( "Using specified clusters, with cluster number on each axis: %s ..." % self.K )
             self.cXY = assigned_clusters
         else:
-            if verbose: print "Randomly initializing clusters, with cluster number on each axis: %s ..." % self.K
+            if verbose: print( "Randomly initializing clusters, with cluster number on each axis: %s ..." % self.K )
             self.cXY = self.initialize_cluster_centers(self.pXY, self.K)
 
         # Step 2: calculate cluster joint and marginal distributions
@@ -89,10 +89,10 @@ class EBC:
             objective = self.calculate_objective()
             if verbose: sys.stdout.write(" objective value = %f\n" % (objective))
             if abs(objective - last_objective) < self.objective_tolerance:
-                if verbose: print "EBC finished in %d iterations, with final objective value %.4f" % (t + 1, objective)
+                if verbose: print( "EBC finished in %d iterations, with final objective value %.4f" % (t + 1, objective) )
                 return self.cXY, objective, t + 1
             last_objective = objective
-        if verbose: print "EBC finished in %d iterations, with final objective value %.4f" % (self.max_it, objective)
+        if verbose: print( "EBC finished in %d iterations, with final objective value %.4f" % (self.max_it, objective) )
         return self.cXY, objective, self.max_it  # hit max iterations - just return current assignments
 
     def compute_clusters(self, pXY, qXhatYhat, qXhat, qXxhat, cXY, axis):
@@ -278,7 +278,9 @@ class EBC:
         Args:
             cXYi: the input cluster assignment
             expected_K: expected number of clusters on this axis
-
+import os.path
+import scipy.io as sio
+import scipy.sparse as sp
         Return:
             None. The assignment will be changed in place in cXYi.
         """
@@ -335,4 +337,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+   main()
