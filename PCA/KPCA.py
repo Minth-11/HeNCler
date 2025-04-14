@@ -29,9 +29,9 @@ dblpMat   = scipy.io.loadmat(  dblpPath)
 data = pubmedMat
 
 ii=0
-l = ["ACM", "DBLP", "PubMed"]
-ll = [750,350,48]
-for data in [acmMat,dblpMat,pubmedMat]:
+l = ["Wiki","ACM", "DBLP", "PubMed"]
+ll = [30,70,35,8]
+for data in [wikiMat, acmMat,dblpMat,pubmedMat]:
     print()
     print()
     print("\t//////////////// "+((ii+1)*"I")+". "+l[ii]+" ////////////////")
@@ -58,8 +58,8 @@ for data in [acmMat,dblpMat,pubmedMat]:
     def toOpt(
         gam,
         n):
-        nclstrs = 23
-        nclstrs = round(n)
+        nclstrs = 17
+        #nclstrs = round(n)
 
         kernel='rbf'
         gamma = gam
@@ -84,10 +84,10 @@ for data in [acmMat,dblpMat,pubmedMat]:
         for i in tqdm(range(10)):
         #   prt("KMeans "+str(i)+"...")
             kmeans = KMeans(n_clusters=nclstrs,verbose=0)
-            kmeans.fit(inData)
+            kmeans.fit(ntr)
         #  prt("KLAAR\n")
 
-            fts = kmeans.predict(inData)
+            fts = kmeans.predict(ntr)
             # print(fts)
 
             NMIs = NMIs + [nmi(labels, fts)]
@@ -104,7 +104,7 @@ for data in [acmMat,dblpMat,pubmedMat]:
     #toOpt(None,17)
 
     pbounds = {
-        'gam': (0, 0.001000),
+        'gam': (0, 0.01000),
         'n': (10, 1500)}
     optimizer = BayesianOptimization(
         f=toOpt,

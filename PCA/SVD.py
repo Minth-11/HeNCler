@@ -8,7 +8,7 @@ from sklearn.metrics import normalized_mutual_info_score as nmi
 from sklearn.cluster import KMeans
 from bayes_opt import BayesianOptimization
 from tqdm import tqdm
-from sklearn.metrics.pairwise import rbf_kernel
+from sklearn.metrics.pairwise import rbf_kernel, linear_kernel
 from scipy.linalg import svd
 
 # inlezen data van BCOT
@@ -61,7 +61,7 @@ for data in [wikiMat, acmMat,dblpMat,pubmedMat]:
     grootste = max(features.shape)
 
     # compabiliteitsmatrix
-    C = np.random.randn(kleinste,grootste)
+    C = np.random.rand(kleinste,grootste)
 
     def prt(x):
         print(x,end='',flush=True)
@@ -70,7 +70,7 @@ for data in [wikiMat, acmMat,dblpMat,pubmedMat]:
         gam,
         n):
         nclstrs = 17
-        #clstrs = round(n)
+        nclstrs = round(n)
 
         kernel='rbf'
         gamma = gam
@@ -81,8 +81,12 @@ for data in [wikiMat, acmMat,dblpMat,pubmedMat]:
         m = grootste
 
         #todo: transformeer de data a.d.h.v. KPCA
-        K = rbf_kernel(RowData,ColData @ C,gam)
-        K = K / K.sum(0)
+        Y=(ColData @ C)
+        X= RowData
+        #print(X.shape)
+        #print(Y.shape)
+        #print(5*'\n',flush=True)
+        K = X @ Y
         Kc = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
         U, _, Vh = svd(Kc)
 
@@ -108,7 +112,7 @@ for data in [wikiMat, acmMat,dblpMat,pubmedMat]:
 
     pbounds = {
         'gam': (0, 0.001000),
-        'n': (10, 1500)}
+        'n': (10, 2000)}
     optimizer = BayesianOptimization(
         f=toOpt,
         pbounds=pbounds,
