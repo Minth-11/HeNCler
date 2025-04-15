@@ -15,11 +15,9 @@ def ordered_confusion_matrix(y_true, y_pred):
     conf_mat = conf_mat[:, col_ind]
     return conf_mat
 
-
 def clustering_accuracy(y_true, y_pred):
     conf_mat = ordered_confusion_matrix(y_true, y_pred)
     return np.trace(conf_mat) / np.sum(conf_mat)
-
 
 def pmi(df, positive=True):
   #<class 'scipy.sparse._csr.csr_matrix'>
@@ -40,10 +38,6 @@ def pmi(df, positive=True):
   if positive:
     df[df < 0] = 0.0
   return df  
-
-#def cuPmi(df, positive=True):
-
-
 
 def average_pmi_per_cluster(x, labels):
   values = 0

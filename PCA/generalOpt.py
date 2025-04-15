@@ -9,6 +9,8 @@ from scipy.sparse.linalg import eigsh
 import cupy.linalg as cla
 import cupy as cp
 import pandas as pd
+import gc
+from metrics import average_pmi_per_cluster
 
 dataPath = os.path.join("..", "BCOT-main", "data")
 wikiPath = os.path.join(dataPath, "wiki.mat")
@@ -36,17 +38,6 @@ def compaIze(RD,CD):
         X = RD
         Y = CD @ np.random.randn(CD.shape[1], RD.shape[1])
     return X, Y
-
-# def gpuSVD(K):
-#     # linalg.init()
-#     # Ka = np.asarray(K,np.double)
-#     Kg = cp.asarray(K)
-#     Ug, Sg, Vhg = cla.svd(Kg)
-#     # print("Overzetten...",end="",flush=True)
-#     U = cp.asnumpy(Ug)
-#     S = cp.asnumpy(Sg)
-#     Vh = cp.asnumpy(Vhg)
-#     return U, S, Vh
 
 def nCl(i,d):
     if (i == "doc"):
@@ -104,11 +95,19 @@ for dataStr in ["wiki","DBLP","ACM","PubMed"]: # 4
                     if dataStr == "PubMed":
                         # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
                         # U, _, _ = gpuSVD(K)
+                        N = cp.ones((n,n))/n
+                        N = cp.eye(n) - N
                         Kg = cp.asarray(K)
-                        Kg = (cp.eye(n) - cp.ones((n,n))/n) @ Kg @ (cp.eye(n) - cp.ones((n,n))/n)
+                        Kg = N @ Kg @ N
+                        del N
+                        gc.collect()
                         Ug, _, _ = cla.svd(Kg)
                         K = cp.asnumpy(Kg)
+                        del Kg
+                        gc.collect()
                         U = cp.asnumpy(Ug)
+                        del Ug
+                        gc.collect()
                     else:
                         K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
                         U, _, _ = svd(K)
@@ -120,17 +119,27 @@ for dataStr in ["wiki","DBLP","ACM","PubMed"]: # 4
                     if dataStr == "PubMed":
                         # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
                         # U, _, _ = gpuSVD(K)
+                        N = cp.ones((n,n))/n
+                        N = cp.eye(n) - N
                         Kg = cp.asarray(K)
-                        Kg = (cp.eye(n) - cp.ones((n,n))/n) @ Kg @ (cp.eye(n) - cp.ones((n,n))/n)
+                        Kg = N @ Kg @ N
+                        del N
+                        gc.collect()
+                        # Kg = cp.asarray(K)
+                        # Kg = (cp.eye(n) - cp.ones((n,n))/n) @ Kg @ (cp.eye(n) - cp.ones((n,n))/n)
                         Ug, _, _ = cla.svd(Kg)
                         K = cp.asnumpy(Kg)
+                        del Kg
+                        gc.collect()
                         U = cp.asnumpy(Ug)
+                        del Ug
+                        gc.collect()
                     else:
                         K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
                         U, _, _ = svd(K)
                     TermEmbedding = U[:,:min(n_components, n)]
 
-                # VIND NMI (a.d.h.v. K-means) [SVD, KSVD]
+                # VIND NMI (a.d.h.v. K-means)
                 NMIs = []
                 for i in range(nruns):
                     kmeans = KMeans(n_clusters=nClusters,verbose=0)
@@ -139,6 +148,18 @@ for dataStr in ["wiki","DBLP","ACM","PubMed"]: # 4
                     NMIs = NMIs + [nmi(labels, fts)]
                 avgNmi = np.mean(np.array(NMIs))
                 stdNmi = np.std( np.array(NMIs))
+
+                PMIs = []
+                # VIND PMI
+                for i in range(nruns):
+                    kmeans = KMeans(n_clusters=nClusters,verbose=0)
+                    kmeans.fit(TermEmbedding)
+                    fts = kmeans.predict(TermEmbedding)
+                    with np.errstate(divide='ignore'):
+                        PMIs = PMIs + [ average_pmi_per_cluster(features.T,fts) ]
+                with np.errstate(divide='ignore'):
+                    avgPmi = np.mean(np.array(PMIs))
+                    stdPmi = np.std( np.array(PMIs))
 
                 reden = ''
                 if nClustersV == "doc":
@@ -150,7 +171,7 @@ for dataStr in ["wiki","DBLP","ACM","PubMed"]: # 4
 
                 if (teller%20 == 0):
                     print()
-                    print(" %\t alg\t data\t nClss\t reden\t gamma\t avgNMI\t\t\t stdNMI")
+                    print(" %\t alg\t data\t nClss\t reden\t gamma\t avgNMI\t\t\t stdNMI\t\t\t avgPMI\t\t\t stdPMI")
                 print(str(round(1000*teller/mxit)/10)+"%",end='\t')
                 print(alg,end='\t')
                 print(dataStr,end='\t')
@@ -159,6 +180,8 @@ for dataStr in ["wiki","DBLP","ACM","PubMed"]: # 4
                 print(gam,end='\t')
                 print(avgNmi,end='\t')
                 print(stdNmi,end='\t')
+                print(avgPmi,end='\t')
+                print(stdPmi,end='\t')
                 print("",flush=True)
 
                 ldta =  {   "alg":alg
@@ -167,7 +190,9 @@ for dataStr in ["wiki","DBLP","ACM","PubMed"]: # 4
                         ,   "reden":reden
                         ,   "gamma":gam
                         ,   "avgNMI":avgNmi
-                        ,   "stdNMI":stdNmi }
+                        ,   "stdNMI":stdNmi
+                        ,   "avgPMI":avgPmi
+                        ,   "stdPMI":stdPmi }
                 gegevens = gegevens._append(ldta,ignore_index=True)
 
 print(gegevens)

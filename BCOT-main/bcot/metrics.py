@@ -41,10 +41,6 @@ def pmi(df, positive=True):
     df[df < 0] = 0.0
   return df  
 
-#def cuPmi(df, positive=True):
-
-
-
 def average_pmi_per_cluster(x, labels):
   values = 0
   pmi_mat = pmi(x @ x.T, positive=False)
