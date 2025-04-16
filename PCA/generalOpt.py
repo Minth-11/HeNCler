@@ -4,13 +4,16 @@ import numpy as np
 from scipy.linalg import svd
 from sklearn.cluster import KMeans
 from sklearn.metrics import normalized_mutual_info_score as nmi
+# from sklearn.metrics import f1_score as f1
 from sklearn.metrics.pairwise import rbf_kernel
 from scipy.sparse.linalg import eigsh
+from sklearn.metrics import adjusted_rand_score
 import cupy.linalg as cla
 import cupy as cp
 import pandas as pd
 import gc
 from metrics import average_pmi_per_cluster
+from sklearn.metrics import cluster
 
 dataPath = os.path.join("..", "BCOT-main", "data")
 wikiPath = os.path.join(dataPath, "wiki.mat")
@@ -30,6 +33,79 @@ docDict  = {"wiki":17,"ACM":3, "DBLP":4, "PubMed":3}
 n_components = 1000
 nruns = 10
 
+def pairwise_accuracy(y_true, y_pred):
+    """Computes pairwise accuracy of two clusterings.
+
+    Args:
+      y_true: An (n,) int ground-truth cluster vector.
+      y_pred: An (n,) int predicted cluster vector.
+
+    Returns:
+      Accuracy value computed from the true/false positives and negatives.
+    """
+    true_pos, false_pos, false_neg, true_neg = _pairwise_confusion(y_true, y_pred)
+    return (true_pos + false_pos) / (true_pos + false_pos + false_neg + true_neg)
+
+def _pairwise_confusion(
+    y_true,
+    y_pred):
+  """Computes pairwise confusion matrix of two clusterings.
+
+  Args:
+    y_true: An (n,) int ground-truth cluster vector.
+    y_pred: An (n,) int predicted cluster vector.
+
+  Returns:
+    True positive, false positive, true negative, and false negative values.
+  """
+  contingency = cluster.contingency_matrix(y_true, y_pred)
+  same_class_true = np.max(contingency, 1)
+  same_class_pred = np.max(contingency, 0)
+  diff_class_true = contingency.sum(axis=1) - same_class_true
+  diff_class_pred = contingency.sum(axis=0) - same_class_pred
+  total = contingency.sum()
+
+  true_positives = (same_class_true * (same_class_true - 1)).sum()
+  false_positives = (diff_class_true * same_class_true * 2).sum()
+  false_negatives = (diff_class_pred * same_class_pred * 2).sum()
+  true_negatives = total * (
+      total - 1) - true_positives - false_positives - false_negatives
+
+  return true_positives, false_positives, false_negatives, true_negatives
+
+def pairwise_precision(y_true, y_pred):
+    """Computes pairwise precision of two clusterings.
+
+    Args:
+    y_true: An [n] int ground-truth cluster vector.
+    y_pred: An [n] int predicted cluster vector.
+
+    Returns:
+    Precision value computed from the true/false positives and negatives.
+    """
+    true_positives, false_positives, _, _ = _pairwise_confusion(y_true, y_pred)
+    return true_positives / (true_positives + false_positives)
+
+
+def pairwise_recall(y_true, y_pred):
+  """Computes pairwise recall of two clusterings.
+
+  Args:
+    y_true: An (n,) int ground-truth cluster vector.
+    y_pred: An (n,) int predicted cluster vector.
+
+  Returns:
+    Recall value computed from the true/false positives and negatives.
+  """
+  true_positives, _, false_negatives, _ = _pairwise_confusion(y_true, y_pred)
+  return true_positives / (true_positives + false_negatives)
+
+
+def f1_score(y_true, y_pred):
+    precision = pairwise_precision(y_true, y_pred)
+    recall = pairwise_recall(y_true, y_pred)
+    return 2 * precision * recall / (precision + recall)
+
 def compaIze(RD,CD):
     if (RD.shape[1]<CD.shape[1]):
         X = RD @ np.random.randn(RD.shape[1], CD.shape[1])
@@ -47,156 +123,245 @@ def nCl(i,d):
     return i
 
 gegevens = pd.DataFrame()
-teller = -1
-mxit = 3*4*10*10
-for dataStr in ["wiki","DBLP","ACM","PubMed"]: # 4
-    for alg in ["SVD","KPCA","KSVD"]: # 3
-        for nClustersV in ["doc","term", 8,16,32,64,128,256,512,1024]: # 10
-            for gam in [0.0001,0.0004,0.0016,0.0064,0.0265,0.1024,0.4096,1.6384,3.2768,13.1072]: #10 [0.0004]:#
-                teller+=1
-                nClusters = nCl(nClustersV,dataStr)
+teller = 0
 
-                # FORMATTEER DATA
-                data = dataDict[dataStr]
-                features= data["fea"].astype(float)
-                if not sp.sparse.issparse(features):
-                    features = sp.sparse.csr_matrix(features)
+dataStrs = ["ACM","DBLP","wiki","PubMed"]
+# dataStrs = ["ACM"]
+algs = ["wKSVD","SVD","KPCA","KSVD"]
+# algs = ["KSVD"]
+nClustersVs = ["doc","term", 8,16,32,64,128,256,512,1024]
+# gams = [0.0001/64,0.0001/16,0.0001/4,0.0001,0.0004,0.0016,0.0064,0.0265,0.1024,0.4096,1.6384,3.2768,13.1072]
+# gams = ["nonsense!"]
+gamScale = [10**i for i in range(-3,4)]
+ncp = [1000,"doc","term"]
 
-                labels = data['gnd'].reshape(-1) - 1
-                n_classes = len(np.unique(labels))
+mxit =len(dataStrs) * len(algs) * len(nClustersVs) * len(gamScale) * len(ncp)
+print("Experimenten: \t"+str(mxit))
+for dataStr in dataStrs:
+    for alg in algs:
+        for nClustersV in nClustersVs:
+            # for gam in gams:
+            for gs in gamScale:
+                for nc in ncp:
+                    teller+=1
+                    nClusters = nCl(nClustersV,dataStr)
 
-                # VIND EMBEDDING
-                if (alg=="KSVD"):
-                    RowData = features
-                    ColData = features.transpose()
-                    X, Y = compaIze(RowData,ColData)
-                    K = rbf_kernel(X,Y,gam)
-                    n, m = K.shape
-                    # K = K / K.sum(0) # lijkt te veel op weging...
-                    K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
-                    U, _, Vh = svd(K)
-                    DocEmbedding = U[:,:min(n_components, n, m)]
-                    TermEmbedding = Vh[:,:min(n_components, n, m)]
+                    # if (teller%20 == 0):
+                    #     print()
+                    #     print(" %\t alg\t data\t nClss\t reden\t gamma\t avgNMI\t\t\t stdNMI\t\t\t avgPMI\t\t\t stdPMI\t\t\t avgF1 \t \t \t stdF1 \t \t \t badWi")
 
-                if (alg=="SVD"):
-                    n, m = features.shape
-                    K = features
-                    Kc = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
-                    U, _, Vh = svd(Kc)
-                    DocEmbedding = U[:,:min(n_components, n, m)]
-                    TermEmbedding = Vh[:,:min(n_components, n, m)]
+                    # FORMATTEERgams DATA
+                    data = dataDict[dataStr]
+                    features= data["fea"].astype(float)
+                    if not sp.sparse.issparse(features):
+                        features = sp.sparse.csr_matrix(features)
 
-                if (alg=="KPCA"):
-                    X = features
-                    # print("Kernelmatrix...",end="",flush=True)
-                    K = rbf_kernel(X,gamma=gam)
-                    # print("KLAAR",flush=True)
-                    n = K.shape[0]
-                    if dataStr == "PubMed":
+                    labels = data['gnd'].reshape(-1) - 1
+                    n_classes = len(np.unique(labels))
+
+                    npFeatures = features.todense()
+                    gammaROT1 = np.mean(npFeatures.var(0))
+                    gammaROT2 = np.mean(npFeatures.var(1))
+                    gammmaROT = (gammaROT1 + gammaROT2)/2
+
+                    gam = gammmaROT * gs
+
+                    n_components = nc
+                    if nc == "doc":
+                        n_components = docDict[dataStr]
+                    if nc == "term":
+                        n_components = termDict[dataStr]
+
+
+                    # VIND EMBEDDING
+                    if (alg=="KSVD"):
+                        RowData = features
+                        ColData = features.transpose()
+                        X, Y = compaIze(RowData,ColData)
+                        K = rbf_kernel(X,Y,gam)
+                        n, m = K.shape
+                        # K = K / K.sum(0) # lijkt te veel op weging...
+                        K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
+                        U, _, Vh = svd(K)
+                        DocEmbedding = U[:,:min(n_components, n, m)]
+                        TermEmbedding = Vh[:,:min(n_components, n, m)]
+
+                    if (alg=="SVD"):
+                        n, m = features.shape
+                        K = features
+                        Kc = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
+                        U, _, Vh = svd(Kc)
+                        DocEmbedding = U[:,:min(n_components, n, m)]
+                        TermEmbedding = Vh[:,:min(n_components, n, m)]
+
+                    if (alg=="wKSVD"):
+                        RowData = features
+                        ColData = features.transpose()
+                        X, Y = compaIze(RowData,ColData)
+                        K = rbf_kernel(X,Y,gam) #NOTE: only positive kernel values are supported (e.g. between 0 and 1)
+                        n, m = K.shape
+                        # w_i, w_j = K.sum(1).power(-1), K.sum(0).power(-1)
+                        # w_i = np.power(K.sum(1),-1)
+                        # w_j = np.power(K.sum(0),-1)
+
+                        d_i, d_j = K.sum(1), K.sum(0)
+                        eps = 1e-3
+                        d_i, d_j = np.clip(d_i, eps, None), np.clip(d_j, eps, None)
+
+                        # w_i = np.where(d_i > eps, np.power(d_i, -1),  np.power(d_i + eps, -1))
+                        # w_j = np.where(d_j > eps, np.power(d_j, -1),  np.power(d_j + eps, -1))
+
+                        w_i, w_j = np.power(d_i, -1), np.power(d_j, -1)
+
+                        # wim = False
+                        # if (min(d_i) < eps) or (min(d_j) < eps):
+                        #     wim = True
+
+                        Kc = (np.eye(n) - np.ones((n,n)) @ np.diag(w_i)/w_i.sum()) @ K @ (np.eye(m) - np.ones((m,m)) @ np.diag(w_j)/w_j.sum())
+
+                        U, _ ,Vh = svd(Kc)
+                        DocEmbedding = U[:,:min(n_components, n, m)]
+                        TermEmbedding = Vh[:,:min(n_components, n, m)]
+                        # DocEmbedding = U[:,:nClusters-1]
+                        # TermEmbedding = Vh[:,:nClusters-1]
+
+                    if (alg=="KPCA"):
+                        X = features
+                        # print("Kernelmatrix...",end="",flush=True)
+                        K = rbf_kernel(X,gamma=gam)
+                        # print("KLAAR",flush=True)
+                        n = K.shape[0]
+                        if dataStr == "PubMed":
+                            # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                            # U, _, _ = gpuSVD(K)
+                            N = cp.ones((n,n))/n
+                            N = cp.eye(n) - N
+                            Kg = cp.asarray(K)
+                            Kg = N @ Kg @ N
+                            del N
+                            gc.collect()
+                            Ug, _, _ = cla.svd(Kg)
+                            K = cp.asnumpy(Kg)
+                            del Kg
+                            gc.collect()
+                            U = cp.asnumpy(Ug)
+                            del Ug
+                            gc.collect()
+                        else:
+                            K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                            U, _, _ = svd(K)
+                        DocEmbedding = U[:,:min(n_components, n)]
+                        X = features.transpose()
+                        K = rbf_kernel(X,gamma=gam)
+                        n = K.shape[0]
                         # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                        # U, _, _ = gpuSVD(K)
-                        N = cp.ones((n,n))/n
-                        N = cp.eye(n) - N
-                        Kg = cp.asarray(K)
-                        Kg = N @ Kg @ N
-                        del N
-                        gc.collect()
-                        Ug, _, _ = cla.svd(Kg)
-                        K = cp.asnumpy(Kg)
-                        del Kg
-                        gc.collect()
-                        U = cp.asnumpy(Ug)
-                        del Ug
-                        gc.collect()
+                        if dataStr == "PubMed":
+                            # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                            # U, _, _ = gpuSVD(K)
+                            N = cp.ones((n,n))/n
+                            N = cp.eye(n) - N
+                            Kg = cp.asarray(K)
+                            Kg = N @ Kg @ N
+                            del N
+                            gc.collect()
+                            # Kg = cp.asarray(K)
+                            # Kg = (cp.eye(n) - cp.ones((n,n))/n) @ Kg @ (cp.eye(n) - cp.ones((n,n))/n)
+                            Ug, _, _ = cla.svd(Kg)
+                            K = cp.asnumpy(Kg)
+                            del Kg
+                            gc.collect()
+                            U = cp.asnumpy(Ug)
+                            del Ug
+                            gc.collect()
+                        else:
+                            K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                            U, _, _ = svd(K)
+                        TermEmbedding = U[:,:min(n_components, n)]
+
+                    # VIND NMI en F1 (a.d.h.v. K-means)
+                    NMIs = []
+                    F1s = []
+                    CAs = []
+                    ARIs = []
+                    for i in range(nruns):
+                        kmeans = KMeans(n_clusters=nClusters,verbose=0)
+                        kmeans.fit(DocEmbedding)
+                        fts = kmeans.predict(DocEmbedding)
+                        NMIs = NMIs + [nmi(labels, fts)]
+                        F1s = F1s + [f1_score(labels, fts)]
+                        CAs = CAs + [ pairwise_accuracy(labels, fts) ]
+                        ARIs = ARIs + [ adjusted_rand_score(labels, fts) ]
+                    avgNmi = np.mean(np.array(NMIs))
+                    stdNmi = np.std( np.array(NMIs))
+                    avgF1 = np.mean(np.array(F1s))
+                    stdF1 = np.std( np.array(F1s))
+                    avgCA =  np.mean(np.array(CAs))
+                    stdCA =  np.std(np.array(CAs))
+                    avgARI =  np.mean(np.array(ARIs))
+                    stdARI =  np.std(np.array(ARIs))
+
+                    PMIs = []
+                    if TermEmbedding.shape[0] > nClusters:
+                        # VIND PMI
+                        for i in range(nruns):
+                            kmeans = KMeans(n_clusters=nClusters,verbose=0)
+                            kmeans.fit(TermEmbedding)
+                            fts = kmeans.predict(TermEmbedding)
+                            with np.errstate(divide='ignore'):
+                                PMIs = PMIs + [ average_pmi_per_cluster(features.T,fts) ]
+                        with np.errstate(divide='ignore'):
+                            avgPmi = np.mean(np.array(PMIs))
+                            stdPmi = np.std( np.array(PMIs))
                     else:
-                        K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                        U, _, _ = svd(K)
-                    DocEmbedding = U[:,:min(n_components, n)]
-                    X = features.transpose()
-                    K = rbf_kernel(X,gamma=gam)
-                    n = K.shape[0]
-                    # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                    if dataStr == "PubMed":
-                        # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                        # U, _, _ = gpuSVD(K)
-                        N = cp.ones((n,n))/n
-                        N = cp.eye(n) - N
-                        Kg = cp.asarray(K)
-                        Kg = N @ Kg @ N
-                        del N
-                        gc.collect()
-                        # Kg = cp.asarray(K)
-                        # Kg = (cp.eye(n) - cp.ones((n,n))/n) @ Kg @ (cp.eye(n) - cp.ones((n,n))/n)
-                        Ug, _, _ = cla.svd(Kg)
-                        K = cp.asnumpy(Kg)
-                        del Kg
-                        gc.collect()
-                        U = cp.asnumpy(Ug)
-                        del Ug
-                        gc.collect()
+                        avgPmi = float('nan')
+                        stdPmi = float('nan')
+
+                    reden = ''
+                    if nClustersV == "doc":
+                        reden="doc"
+                    elif nClustersV == "term":
+                        reden="term"
                     else:
-                        K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                        U, _, _ = svd(K)
-                    TermEmbedding = U[:,:min(n_components, n)]
+                        reden="sweep"
 
-                # VIND NMI (a.d.h.v. K-means)
-                NMIs = []
-                for i in range(nruns):
-                    kmeans = KMeans(n_clusters=nClusters,verbose=0)
-                    kmeans.fit(DocEmbedding)
-                    fts = kmeans.predict(DocEmbedding)
-                    NMIs = NMIs + [nmi(labels, fts)]
-                avgNmi = np.mean(np.array(NMIs))
-                stdNmi = np.std( np.array(NMIs))
+                    #
+                    # print(str(round(1000*teller/mxit)/10)+"%",end='\t')
+                    # print(alg,end='\t')
+                    # print(dataStr,end='\t')
+                    # print(nClusters,end='\t')
+                    # print(reden,end='\t')
+                    # print(gam,end='\t')
+                    # print(avgNmi,end='\t')
+                    # print(stdNmi,end='\t')
+                    # print(avgPmi,end='\t')
+                    # print(stdPmi,end='\t')
+                    # print(avgF1,end='\t')
+                    # print(stdF1,end='\t')
+                    # print(wim,end='\t')
+                    # print("",flush=True)
 
-                PMIs = []
-                # VIND PMI
-                for i in range(nruns):
-                    kmeans = KMeans(n_clusters=nClusters,verbose=0)
-                    kmeans.fit(TermEmbedding)
-                    fts = kmeans.predict(TermEmbedding)
-                    with np.errstate(divide='ignore'):
-                        PMIs = PMIs + [ average_pmi_per_cluster(features.T,fts) ]
-                with np.errstate(divide='ignore'):
-                    avgPmi = np.mean(np.array(PMIs))
-                    stdPmi = np.std( np.array(PMIs))
+                    ldta =  {   "pct":round(1000*teller/mxit)/10
+                            ,   "alg":alg
+                            ,   "data":dataStr
+                            ,   "nClusters":nClusters
+                            ,   "nComponents":n_components
+                            ,   "reden":reden
+                            ,   "gamma":gam
+                            ,   "avgNMI":avgNmi
+                            ,   "stdNMI":stdNmi
+                            ,   "avgPMI":avgPmi
+                            ,   "stdPMI":stdPmi
+                            ,   "avgF1":avgF1
+                            ,   "stdF1":stdF1
+                            ,   "avgCA":avgCA
+                            ,   "stdCA":stdCA
+                            ,   "avgARI":avgARI
+                            ,   "stdCA":stdARI}
+                    gegevens = gegevens._append(ldta,ignore_index=True)
 
-                reden = ''
-                if nClustersV == "doc":
-                    reden="doc"
-                elif nClustersV == "term":
-                    reden="term"
-                else:
-                    reden="sweep"
-
-                if (teller%20 == 0):
                     print()
-                    print(" %\t alg\t data\t nClss\t reden\t gamma\t avgNMI\t\t\t stdNMI\t\t\t avgPMI\t\t\t stdPMI")
-                print(str(round(1000*teller/mxit)/10)+"%",end='\t')
-                print(alg,end='\t')
-                print(dataStr,end='\t')
-                print(nClusters,end='\t')
-                print(reden,end='\t')
-                print(gam,end='\t')
-                print(avgNmi,end='\t')
-                print(stdNmi,end='\t')
-                print(avgPmi,end='\t')
-                print(stdPmi,end='\t')
-                print("",flush=True)
-
-                ldta =  {   "alg":alg
-                        ,   "data":dataStr
-                        ,   "nClusters":nClusters
-                        ,   "reden":reden
-                        ,   "gamma":gam
-                        ,   "avgNMI":avgNmi
-                        ,   "stdNMI":stdNmi
-                        ,   "avgPMI":avgPmi
-                        ,   "stdPMI":stdPmi }
-                gegevens = gegevens._append(ldta,ignore_index=True)
-
-print(gegevens)
-gegevens.to_csv("gegevens.csv")
+                    print(gegevens)
+                    gegevens.to_csv("gegevens.csv")
 
 
 
