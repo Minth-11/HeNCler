@@ -8,12 +8,17 @@ from sklearn.metrics import normalized_mutual_info_score as nmi
 from sklearn.metrics.pairwise import rbf_kernel
 from scipy.sparse.linalg import eigsh
 from sklearn.metrics import adjusted_rand_score
+import sklearn.decomposition as skd
 import cupy.linalg as cla
 import cupy as cp
 import pandas as pd
 import gc
 from metrics import average_pmi_per_cluster
 from sklearn.metrics import cluster
+
+clear = lambda: os.system('clear')
+
+pd.set_option("display.max_rows", 100000)
 
 dataPath = os.path.join("..", "BCOT-main", "data")
 wikiPath = os.path.join(dataPath, "wiki.mat")
@@ -115,6 +120,30 @@ def compaIze(RD,CD):
         Y = CD @ np.random.randn(CD.shape[1], RD.shape[1])
     return X, Y
 
+def compaIzeKlein(RD,CD):
+    if (RD.shape[1]<CD.shape[1]):
+        X = RD
+        Y = CD @ np.random.randn(CD.shape[1], RD.shape[1])
+    else:
+        X = RD @ np.random.randn(RD.shape[1], CD.shape[1])
+        Y = CD
+    return X, Y
+
+def compaIzePCA(RD,CD):
+    if (RD.shape[1]<CD.shape[1]):
+        X = RD
+        skpca = skd.PCA(n_components=RD.shape[1])
+        cdd = np.asarray( CD.todense() )
+        ft = skpca.fit(cdd)
+        Y = ft.transform(cdd)
+    else:
+        skpca = skd.PCA(n_components=CD.shape[1])
+        rdd = np.asarray( RD.todense() )
+        ft = skpca.fit(rdd)
+        X = ft.transform(rdd)
+        Y = CD
+    return X, Y
+
 def nCl(i,d):
     if (i == "doc"):
         return docDict[d]
@@ -126,14 +155,17 @@ gegevens = pd.DataFrame()
 teller = 0
 
 dataStrs = ["ACM","DBLP","wiki","PubMed"]
-# dataStrs = ["ACM"]
-algs = ["wKSVD","SVD","KPCA","KSVD"]
-# algs = ["KSVD"]
+dataStrs = ["ACM","DBLP"]
+algs = ["wKSVD","KSVD","SVD","KPCA"]
+#algs = ["wKSVD","KSVD"]
 nClustersVs = ["doc","term", 8,16,32,64,128,256,512,1024]
 # gams = [0.0001/64,0.0001/16,0.0001/4,0.0001,0.0004,0.0016,0.0064,0.0265,0.1024,0.4096,1.6384,3.2768,13.1072]
 # gams = ["nonsense!"]
-gamScale = [10**i for i in range(-3,4)]
+gamScale = [10**i for i in range(-4,7)]
 ncp = [1000,"doc","term"]
+
+compa = ["std","klein","pca"]
+compa = ["pca"]
 
 mxit =len(dataStrs) * len(algs) * len(nClustersVs) * len(gamScale) * len(ncp)
 print("Experimenten: \t"+str(mxit))
@@ -143,240 +175,217 @@ for dataStr in dataStrs:
             # for gam in gams:
             for gs in gamScale:
                 for nc in ncp:
-                    teller+=1
-                    nClusters = nCl(nClustersV,dataStr)
+                    for cpi in compa:
+                        teller+=1
+                        nClusters = nCl(nClustersV,dataStr)
 
-                    # if (teller%20 == 0):
-                    #     print()
-                    #     print(" %\t alg\t data\t nClss\t reden\t gamma\t avgNMI\t\t\t stdNMI\t\t\t avgPMI\t\t\t stdPMI\t\t\t avgF1 \t \t \t stdF1 \t \t \t badWi")
+                        # FORMATTEERgams DATA
+                        data = dataDict[dataStr]
+                        features= data["fea"].astype(float)
+                        if not sp.sparse.issparse(features):
+                            features = sp.sparse.csr_matrix(features)
 
-                    # FORMATTEERgams DATA
-                    data = dataDict[dataStr]
-                    features= data["fea"].astype(float)
-                    if not sp.sparse.issparse(features):
-                        features = sp.sparse.csr_matrix(features)
+                        labels = data['gnd'].reshape(-1) - 1
+                        n_classes = len(np.unique(labels))
 
-                    labels = data['gnd'].reshape(-1) - 1
-                    n_classes = len(np.unique(labels))
+                        npFeatures = features.todense()
+                        gammaROT1 = np.mean(npFeatures.var(0))
+                        gammaROT2 = np.mean(npFeatures.var(1))
+                        gammmaROT = (gammaROT1 + gammaROT2)/2
 
-                    npFeatures = features.todense()
-                    gammaROT1 = np.mean(npFeatures.var(0))
-                    gammaROT2 = np.mean(npFeatures.var(1))
-                    gammmaROT = (gammaROT1 + gammaROT2)/2
+                        gam = gammmaROT * gs
 
-                    gam = gammmaROT * gs
-
-                    n_components = nc
-                    if nc == "doc":
-                        n_components = docDict[dataStr]
-                    if nc == "term":
-                        n_components = termDict[dataStr]
+                        n_components = nc
+                        if nc == "doc":
+                            n_components = docDict[dataStr]
+                        if nc == "term":
+                            n_components = termDict[dataStr]
 
 
-                    # VIND EMBEDDING
-                    if (alg=="KSVD"):
-                        RowData = features
-                        ColData = features.transpose()
-                        X, Y = compaIze(RowData,ColData)
-                        K = rbf_kernel(X,Y,gam)
-                        n, m = K.shape
-                        # K = K / K.sum(0) # lijkt te veel op weging...
-                        K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
-                        U, _, Vh = svd(K)
-                        DocEmbedding = U[:,:min(n_components, n, m)]
-                        TermEmbedding = Vh[:,:min(n_components, n, m)]
+                        # VIND EMBEDDING
+                        if (alg=="KSVD"):
+                            RowData = features
+                            ColData = features.transpose()
+                            if cpi == "std":
+                                X, Y = compaIze(RowData,ColData)
+                            if cpi == "pca":
+                                X, Y = compaIzePCA(RowData,ColData)
+                            if cpi == "klein":
+                                X, Y = compaIzeKlein(RowData,ColData)
+                            K = rbf_kernel(X,Y,gam)
+                            n, m = K.shape
+                            # K = K / K.sum(0) # lijkt te veel op weging...
+                            K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
+                            U, _, Vh = svd(K)
+                            DocEmbedding = U[:,:min(n_components, n, m)]
+                            TermEmbedding = Vh[:,:min(n_components, n, m)]
 
-                    if (alg=="SVD"):
-                        n, m = features.shape
-                        K = features
-                        Kc = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
-                        U, _, Vh = svd(Kc)
-                        DocEmbedding = U[:,:min(n_components, n, m)]
-                        TermEmbedding = Vh[:,:min(n_components, n, m)]
+                        if (alg=="SVD"):
+                            n, m = features.shape
+                            K = features
+                            Kc = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(m) - np.ones((m,m))/m)
+                            U, _, Vh = svd(Kc)
+                            DocEmbedding = U[:,:min(n_components, n, m)]
+                            TermEmbedding = Vh[:,:min(n_components, n, m)]
 
-                    if (alg=="wKSVD"):
-                        RowData = features
-                        ColData = features.transpose()
-                        X, Y = compaIze(RowData,ColData)
-                        K = rbf_kernel(X,Y,gam) #NOTE: only positive kernel values are supported (e.g. between 0 and 1)
-                        n, m = K.shape
-                        # w_i, w_j = K.sum(1).power(-1), K.sum(0).power(-1)
-                        # w_i = np.power(K.sum(1),-1)
-                        # w_j = np.power(K.sum(0),-1)
+                        if (alg=="wKSVD"):
+                            RowData = features
+                            ColData = features.transpose()
+                            if cpi == "std":
+                                X, Y = compaIze(RowData,ColData)
+                            if cpi == "pca":
+                                X, Y = compaIzePCA(RowData,ColData)
+                            if cpi == "klein":
+                                X, Y = compaIzeKlein(RowData,ColData)
+                            K = rbf_kernel(X,Y,gam) #NOTE: only positive kernel values are supported (e.g. between 0 and 1)
+                            n, m = K.shape
 
-                        d_i, d_j = K.sum(1), K.sum(0)
-                        eps = 1e-3
-                        d_i, d_j = np.clip(d_i, eps, None), np.clip(d_j, eps, None)
 
-                        # w_i = np.where(d_i > eps, np.power(d_i, -1),  np.power(d_i + eps, -1))
-                        # w_j = np.where(d_j > eps, np.power(d_j, -1),  np.power(d_j + eps, -1))
+                            d_i, d_j = K.sum(1), K.sum(0)
+                            eps = 1e-3
+                            d_i, d_j = np.clip(d_i, eps, None), np.clip(d_j, eps, None)
 
-                        w_i, w_j = np.power(d_i, -1), np.power(d_j, -1)
+                            w_i, w_j = np.power(d_i, -1), np.power(d_j, -1)
 
-                        # wim = False
-                        # if (min(d_i) < eps) or (min(d_j) < eps):
-                        #     wim = True
+                            Kc = (np.eye(n) - np.ones((n,n)) @ np.diag(w_i)/w_i.sum()) @ K @ (np.eye(m) - np.ones((m,m)) @ np.diag(w_j)/w_j.sum())
 
-                        Kc = (np.eye(n) - np.ones((n,n)) @ np.diag(w_i)/w_i.sum()) @ K @ (np.eye(m) - np.ones((m,m)) @ np.diag(w_j)/w_j.sum())
+                            U, _ ,Vh = svd(Kc)
+                            DocEmbedding = U[:,:min(n_components, n, m)]
+                            TermEmbedding = Vh[:,:min(n_components, n, m)]
+                            # DocEmbedding = U[:,:nClusters-1]
+                            # TermEmbedding = Vh[:,:nClusters-1]
 
-                        U, _ ,Vh = svd(Kc)
-                        DocEmbedding = U[:,:min(n_components, n, m)]
-                        TermEmbedding = Vh[:,:min(n_components, n, m)]
-                        # DocEmbedding = U[:,:nClusters-1]
-                        # TermEmbedding = Vh[:,:nClusters-1]
-
-                    if (alg=="KPCA"):
-                        X = features
-                        # print("Kernelmatrix...",end="",flush=True)
-                        K = rbf_kernel(X,gamma=gam)
-                        # print("KLAAR",flush=True)
-                        n = K.shape[0]
-                        if dataStr == "PubMed":
+                        if (alg=="KPCA"):
+                            X = features
+                            # print("Kernelmatrix...",end="",flush=True)
+                            K = rbf_kernel(X,gamma=gam)
+                            # print("KLAAR",flush=True)
+                            n = K.shape[0]
+                            if dataStr == "PubMed":
+                                # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                                # U, _, _ = gpuSVD(K)
+                                N = cp.ones((n,n))/n
+                                N = cp.eye(n) - N
+                                Kg = cp.asarray(K)
+                                Kg = N @ Kg @ N
+                                del N
+                                gc.collect()
+                                Ug, _, _ = cla.svd(Kg)
+                                K = cp.asnumpy(Kg)
+                                del Kg
+                                gc.collect()
+                                U = cp.asnumpy(Ug)
+                                del Ug
+                                gc.collect()
+                            else:
+                                K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                                U, _, _ = svd(K)
+                            DocEmbedding = U[:,:min(n_components, n)]
+                            X = features.transpose()
+                            K = rbf_kernel(X,gamma=gam)
+                            n = K.shape[0]
                             # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                            # U, _, _ = gpuSVD(K)
-                            N = cp.ones((n,n))/n
-                            N = cp.eye(n) - N
-                            Kg = cp.asarray(K)
-                            Kg = N @ Kg @ N
-                            del N
-                            gc.collect()
-                            Ug, _, _ = cla.svd(Kg)
-                            K = cp.asnumpy(Kg)
-                            del Kg
-                            gc.collect()
-                            U = cp.asnumpy(Ug)
-                            del Ug
-                            gc.collect()
-                        else:
-                            K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                            U, _, _ = svd(K)
-                        DocEmbedding = U[:,:min(n_components, n)]
-                        X = features.transpose()
-                        K = rbf_kernel(X,gamma=gam)
-                        n = K.shape[0]
-                        # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                        if dataStr == "PubMed":
-                            # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                            # U, _, _ = gpuSVD(K)
-                            N = cp.ones((n,n))/n
-                            N = cp.eye(n) - N
-                            Kg = cp.asarray(K)
-                            Kg = N @ Kg @ N
-                            del N
-                            gc.collect()
-                            # Kg = cp.asarray(K)
-                            # Kg = (cp.eye(n) - cp.ones((n,n))/n) @ Kg @ (cp.eye(n) - cp.ones((n,n))/n)
-                            Ug, _, _ = cla.svd(Kg)
-                            K = cp.asnumpy(Kg)
-                            del Kg
-                            gc.collect()
-                            U = cp.asnumpy(Ug)
-                            del Ug
-                            gc.collect()
-                        else:
-                            K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
-                            U, _, _ = svd(K)
-                        TermEmbedding = U[:,:min(n_components, n)]
+                            if dataStr == "PubMed":
+                                # K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                                # U, _, _ = gpuSVD(K)
+                                N = cp.ones((n,n))/n
+                                N = cp.eye(n) - N
+                                Kg = cp.asarray(K)
+                                Kg = N @ Kg @ N
+                                del N
+                                gc.collect()
+                                Ug, _, _ = cla.svd(Kg)
+                                K = cp.asnumpy(Kg)
+                                del Kg
+                                gc.collect()
+                                U = cp.asnumpy(Ug)
+                                del Ug
+                                gc.collect()
+                            else:
+                                K = (np.eye(n) - np.ones((n,n))/n) @ K @ (np.eye(n) - np.ones((n,n))/n)
+                                U, _, _ = svd(K)
+                            TermEmbedding = U[:,:min(n_components, n)]
 
-                    # VIND NMI en F1 (a.d.h.v. K-means)
-                    NMIs = []
-                    F1s = []
-                    CAs = []
-                    ARIs = []
-                    for i in range(nruns):
-                        kmeans = KMeans(n_clusters=nClusters,verbose=0)
-                        kmeans.fit(DocEmbedding)
-                        fts = kmeans.predict(DocEmbedding)
-                        NMIs = NMIs + [nmi(labels, fts)]
-                        F1s = F1s + [f1_score(labels, fts)]
-                        CAs = CAs + [ pairwise_accuracy(labels, fts) ]
-                        ARIs = ARIs + [ adjusted_rand_score(labels, fts) ]
-                    avgNmi = np.mean(np.array(NMIs))
-                    stdNmi = np.std( np.array(NMIs))
-                    avgF1 = np.mean(np.array(F1s))
-                    stdF1 = np.std( np.array(F1s))
-                    avgCA =  np.mean(np.array(CAs))
-                    stdCA =  np.std(np.array(CAs))
-                    avgARI =  np.mean(np.array(ARIs))
-                    stdARI =  np.std(np.array(ARIs))
-
-                    PMIs = []
-                    if TermEmbedding.shape[0] > nClusters:
-                        # VIND PMI
+                        # VIND NMI en F1 (a.d.h.v. K-means)
+                        NMIs = []
+                        F1s = []
+                        CAs = []
+                        ARIs = []
                         for i in range(nruns):
-                            kmeans = KMeans(n_clusters=nClusters,verbose=0)
-                            kmeans.fit(TermEmbedding)
-                            fts = kmeans.predict(TermEmbedding)
+                            kmeans = KMeans(n_clusters=nClusters,verbose=0,init='random',max_iter=10000)
+                            kmeans.fit(DocEmbedding)
+                            fts = kmeans.predict(DocEmbedding)
+                            NMIs = NMIs + [nmi(labels, fts)]
+                            F1s = F1s + [f1_score(labels, fts)]
+                            CAs = CAs + [ pairwise_accuracy(labels, fts) ]
+                            ARIs = ARIs + [ adjusted_rand_score(labels, fts) ]
+                        avgNmi = np.mean(np.array(NMIs))
+                        maxNmi = np.max(np.array(NMIs))
+                        stdNmi = np.std( np.array(NMIs))
+                        avgF1 = np.mean(np.array(F1s))
+                        maxF1 = np.max(np.array(F1s))
+                        stdF1 = np.std( np.array(F1s))
+                        avgCA =  np.mean(np.array(CAs))
+                        maxCA = np.max(np.array(CAs))
+                        stdCA =  np.std(np.array(CAs))
+                        avgARI =  np.mean(np.array(ARIs))
+                        maxARI = np.max(np.array(ARIs))
+                        stdARI =  np.std(np.array(ARIs))
+
+                        PMIs = []
+                        if TermEmbedding.shape[0] > nClusters:
+                            # VIND PMI
+                            for i in range(nruns):
+                                kmeans = KMeans(n_clusters=nClusters,verbose=0)
+                                kmeans.fit(TermEmbedding)
+                                fts = kmeans.predict(TermEmbedding)
+                                with np.errstate(divide='ignore'):
+                                    PMIs = PMIs + [ average_pmi_per_cluster(features.T,fts) ]
                             with np.errstate(divide='ignore'):
-                                PMIs = PMIs + [ average_pmi_per_cluster(features.T,fts) ]
-                        with np.errstate(divide='ignore'):
-                            avgPmi = np.mean(np.array(PMIs))
-                            stdPmi = np.std( np.array(PMIs))
-                    else:
-                        avgPmi = float('nan')
-                        stdPmi = float('nan')
+                                avgPmi = np.mean(np.array(PMIs))
+                                stdPmi = np.std( np.array(PMIs))
+                        else:
+                            avgPmi = float('nan')
+                            stdPmi = float('nan')
 
-                    reden = ''
-                    if nClustersV == "doc":
-                        reden="doc"
-                    elif nClustersV == "term":
-                        reden="term"
-                    else:
-                        reden="sweep"
+                        reden = ''
+                        if nClustersV == "doc":
+                            reden="doc"
+                        elif nClustersV == "term":
+                            reden="term"
+                        else:
+                            reden="sweep"
 
-                    #
-                    # print(str(round(1000*teller/mxit)/10)+"%",end='\t')
-                    # print(alg,end='\t')
-                    # print(dataStr,end='\t')
-                    # print(nClusters,end='\t')
-                    # print(reden,end='\t')
-                    # print(gam,end='\t')
-                    # print(avgNmi,end='\t')
-                    # print(stdNmi,end='\t')
-                    # print(avgPmi,end='\t')
-                    # print(stdPmi,end='\t')
-                    # print(avgF1,end='\t')
-                    # print(stdF1,end='\t')
-                    # print(wim,end='\t')
-                    # print("",flush=True)
+                        ldta =  {   "pct":round(100*teller/mxit,2)
+                                ,   "alg":alg
+                                ,   "compaIze":cpi
+                                ,   "data":dataStr
+                                ,   "nClusters":nClusters
+                                ,   "nComponents":n_components
+                                ,   "nClusters":nc
+                                ,   "redenCl":reden
+                                ,   "gamma":gam
+                                ,   "gammaScale":gs
+                                ,   "maxNMI":maxNmi
+                                ,   "avgNMI":avgNmi
+                                ,   "stdNMI":stdNmi
+                                ,   "avgPMI":avgPmi
+                                ,   "stdPMI":stdPmi
+                                ,   "maxF1":maxF1
+                                ,   "avgF1":avgF1
+                                ,   "stdF1":stdF1
+                                ,   "maxCA":maxCA
+                                ,   "avgCA":avgCA
+                                ,   "stdCA":stdCA
+                                ,   "maxARI":maxARI
+                                ,   "avgARI":avgARI
+                                ,   "stdARI":stdARI} # was stdCA
+                        gegevens = gegevens._append(ldta,ignore_index=True)
 
-                    ldta =  {   "pct":round(1000*teller/mxit)/10
-                            ,   "alg":alg
-                            ,   "data":dataStr
-                            ,   "nClusters":nClusters
-                            ,   "nComponents":n_components
-                            ,   "reden":reden
-                            ,   "gamma":gam
-                            ,   "avgNMI":avgNmi
-                            ,   "stdNMI":stdNmi
-                            ,   "avgPMI":avgPmi
-                            ,   "stdPMI":stdPmi
-                            ,   "avgF1":avgF1
-                            ,   "stdF1":stdF1
-                            ,   "avgCA":avgCA
-                            ,   "stdCA":stdCA
-                            ,   "avgARI":avgARI
-                            ,   "stdCA":stdARI}
-                    gegevens = gegevens._append(ldta,ignore_index=True)
-
-                    print()
-                    print(gegevens)
-                    gegevens.to_csv("gegevens.csv")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+                        print()
+                        clear()
+                        print(gegevens)
+                        gegevens.to_csv("gegevens0002.csv")
 
 
 
