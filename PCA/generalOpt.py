@@ -155,7 +155,7 @@ gegevens = pd.DataFrame()
 teller = 0
 
 dataStrs = ["ACM","DBLP","wiki","PubMed"]
-dataStrs = ["ACM","DBLP"]
+dataStrs = ["PubMed","wiki","DBLP","ACM"]
 algs = ["wKSVD","KSVD","SVD","KPCA"]
 #algs = ["wKSVD","KSVD"]
 nClustersVs = ["doc","term", 8,16,32,64,128,256,512,1024]
@@ -385,7 +385,7 @@ for dataStr in dataStrs:
                         print()
                         clear()
                         print(gegevens)
-                        gegevens.to_csv("gegevens0002.csv")
+                        gegevens.to_csv("gegevens0003.csv")
 
 
 
