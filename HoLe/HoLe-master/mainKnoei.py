@@ -498,7 +498,10 @@ if __name__ == "__main__":
         sys.stdout = sys.__stdout__
         return uit["qNMI"]
 
-    punten = 1
+
+    titel = '\n' + sys.argv[2] + ": F1" + '\n'
+    print(titel)
+    punten = 60
     bounds = {'gamma':(0.1,1.0),'xi':(0.1,1.0),'eta':(0.001,0.1)}
     boF1 = BayesianOptimization(f=toOptSilentF1,pbounds=bounds)
     boF1.maximize(n_iter=punten)
@@ -510,6 +513,8 @@ if __name__ == "__main__":
     fl.write('\n')
     fl.write('\n')
     fl.close
+    titel = '\n' + sys.argv[2] + ": NMI" + '\n'
+    print(titel)
     boNMI = BayesianOptimization(f=toOptSilentNMI,pbounds=bounds)
     boNMI.maximize(n_iter=punten)
     fl = open("besteParams.txt",'a')
