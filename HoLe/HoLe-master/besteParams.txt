@@ -1,0 +1,52 @@
+['mainKnoei.py', '--dataset', 'texas', '--gpu_id', '0']
+F1
+{'target': 0.36065573770491804, 'params': {'eta': 0.09056786017067009, 'gamma': 0.4661603526428678, 'xi': 0.5721751294498395}}
+
+['mainKnoei.py', '--dataset', 'texas', '--gpu_id', '0']
+NMI
+{'target': 0.07966690649701316, 'params': {'eta': 0.09867920983459957, 'gamma': 0.6750119490629675, 'xi': 0.3794930623374809}}
+
+['mainKnoei.py', '--dataset', 'cornell', '--gpu_id', '0']
+F1
+{'target': 0.37158469945355194, 'params': {'eta': 0.034283258885109115, 'gamma': 0.9343399667400427, 'xi': 0.947548945539555}}
+
+['mainKnoei.py', '--dataset', 'cornell', '--gpu_id', '0']
+NMI
+{'target': 0.1431910117146366, 'params': {'eta': 0.0036917623609216787, 'gamma': 0.46808308319677383, 'xi': 0.20152568819948655}}
+
+['mainKnoei.py', '--dataset', 'wisconsin', '--gpu_id', '0']
+F1
+{'target': 0.3745019920318725, 'params': {'eta': 0.02566839062191928, 'gamma': 0.177693836316196, 'xi': 0.9145609670094857}}
+
+['mainKnoei.py', '--dataset', 'wisconsin', '--gpu_id', '0']
+NMI
+{'target': 0.12463854884945542, 'params': {'eta': 0.052877722512764375, 'gamma': 0.9533101229831927, 'xi': 0.6427064682746172}}
+
+['mainKnoei.py', '--dataset', 'chameleon', '--gpu_id', '0']
+F1
+{'target': 0.30917874396135264, 'params': {'eta': 0.002433162696718917, 'gamma': 0.5099598817204188, 'xi': 0.2665007133346956}}
+
+['mainKnoei.py', '--dataset', 'chameleon', '--gpu_id', '0']
+NMI
+{'target': 0.09111591959149963, 'params': {'eta': 0.042825396854477366, 'gamma': 0.1855019928861414, 'xi': 0.48725955512305286}}
+
+['mainKnoei.py', '--dataset', 'squirrel', '--gpu_id', '0']
+F1
+{'target': 0.297442799461642, 'params': {'eta': 0.036597973132358484, 'gamma': 0.9991425640349296, 'xi': 0.6103549855250833}}
+
+['mainKnoei.py', '--dataset', 'squirrel', '--gpu_id', '0']
+NMI
+{'target': 0.052367259358838084, 'params': {'eta': 0.03400239103063429, 'gamma': 0.813070431201588, 'xi': 0.7762092665391783}}
+
+['mainKnoei.py', '--dataset', 'minesweeper', '--gpu_id', '0']
+F1
+{'target': 0.6314, 'params': {'eta': 0.002838703911552943, 'gamma': 0.5952780812172738, 'xi': 0.8459821609256446}}
+
+['mainKnoei.py', '--dataset', 'minesweeper', '--gpu_id', '0']
+NMI
+{'target': 0.06451758238939984, 'params': {'eta': 0.00317637986772471, 'gamma': 0.38731235450303136, 'xi': 0.5414278164133848}}
+
+['mainKnoei.py', '--dataset', 'tolokers', '--gpu_id', '0']
+F1
+{'target': 0.6848953903725123, 'params': {'eta': 0.02966067223565122, 'gamma': 0.4355679101573471, 'xi': 0.9101530379759138}}
+

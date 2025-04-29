@@ -4,6 +4,9 @@
 import argparse
 import random
 
+import pandas as pd
+from tqdm import tqdm
+
 from bayes_opt import BayesianOptimization
 
 import scipy.sparse as sp
@@ -18,9 +21,15 @@ from utils import evaluation
 from utils import get_str_time
 from utils import set_device
 
+import time
+import numpy as np
+
 import sys, os
 
 if __name__ == "__main__":
+
+    clear = lambda: os.system('clear')
+
     parser = argparse.ArgumentParser(
         prog="HoLe",
         description=
@@ -49,7 +58,7 @@ if __name__ == "__main__":
     dump = True
     device = set_device(str(args.gpu_id))
 
-    def toOpt(gamma,xi,eta):
+    def toOpt(gamma,xi,eta,datasets):
 
         myValue = 0.001
 
@@ -318,7 +327,7 @@ if __name__ == "__main__":
             "tolokers": "critical",
         }
 
-        datasets = [args.dataset]
+        datasets = [datasets]
 
         for ds in datasets:
             if ds == "Reddit":
@@ -498,10 +507,70 @@ if __name__ == "__main__":
         sys.stdout = sys.__stdout__
         return uit["qNMI"]
 
+
+    prs = {}
+    prs[('texas',"F1")] = {'eta': 0.09056786017067009, 'gamma': 0.4661603526428678, 'xi': 0.5721751294498395}
+    prs[('texas',"NMI")] = {'eta': 0.09867920983459957, 'gamma': 0.6750119490629675, 'xi': 0.3794930623374809}
+    prs[('cornell',"F1")] = {'eta': 0.034283258885109115, 'gamma': 0.9343399667400427, 'xi': 0.947548945539555}
+    prs[('cornell',"NMI")] = {'eta': 0.0036917623609216787, 'gamma': 0.46808308319677383, 'xi': 0.20152568819948655}
+    prs[('wisconsin',"F1")] = {'eta': 0.02566839062191928, 'gamma': 0.177693836316196, 'xi': 0.9145609670094857}
+    prs[('wisconsin',"NMI")] = {'eta': 0.052877722512764375, 'gamma': 0.9533101229831927, 'xi': 0.6427064682746172}
+    prs[('chameleon',"F1")] = {'eta': 0.002433162696718917, 'gamma': 0.5099598817204188, 'xi': 0.2665007133346956}
+    prs[('chameleon',"NMI")] = {'eta': 0.042825396854477366, 'gamma': 0.1855019928861414, 'xi': 0.48725955512305286}
+    prs[('squirrel',"F1")] = {'eta': 0.036597973132358484, 'gamma': 0.9991425640349296, 'xi': 0.6103549855250833}
+    prs[('squirrel',"NMI")] = {'eta': 0.03400239103063429, 'gamma': 0.813070431201588, 'xi': 0.7762092665391783}
+    prs[('minesweeper',"F1")] = {'eta': 0.002838703911552943, 'gamma': 0.5952780812172738, 'xi': 0.8459821609256446}
+    prs[('minesweeper',"NMI")] = {'eta': 0.00317637986772471, 'gamma': 0.38731235450303136, 'xi': 0.5414278164133848}
+    prs[('tolokers',"F1")] = {'eta': 0.02966067223565122, 'gamma': 0.4355679101573471, 'xi': 0.9101530379759138}
+    prs[('tolokers',"NMI")] = {'eta': 0.08722, 'gamma': 0.8878, 'xi': 0.7451}
+
+    aantal = 5;
+    datasets = ['texas','cornell','wisconsin','chameleon','squirrel','minesweeper','tolokers']
+    metrieken = ["F1","NMI"]
+    tot = len(datasets) * len(metrieken)
+    gegevens = pd.DataFrame()
+    teller = 0
+    for d in datasets:
+        for m in metrieken:
+            ldta = {}
+            teller += 1
+            clear()
+            print(gegevens)
+            ldta["pct"] = round(100*teller/tot)
+            ldta["dataset"] = d
+            ldta["metriek"] = m
+            p = prs[(d,m)]
+            hevel = []
+            tijd = []
+            for i in tqdm(range(aantal)):
+                sys.stdout = open(os.devnull, 'w') # stil
+                beginTijd = time.time()
+                h = toOpt(p['gamma'],p['xi'],p['eta'],d)
+                eindTijd = time.time()
+                sys.stdout = sys.__stdout__
+                tijd = tijd = [ eindTijd - beginTijd ]
+                if m == 'F1':
+                    hevel = hevel + [ h['qMicroF1'] ]
+                if m == 'NMI':
+                    hevel = hevel + [ h['qNMI'] ]
+            hnp = np.array(hevel)
+            tnp = np.array(tijd)
+            ldta["avg"] = np.mean(hnp)
+            ldta["std"] = np.std(hnp)
+            ldta["avgTijd [s]"] = np.mean(tnp)
+            ldta["stdTijd [s]"] = np.std(tnp)
+            gegevens = gegevens._append(ldta,ignore_index=True)
+            gegevens.to_csv("gegevensHoLe"+str(aantal)+".csv")
+
+    clear()
+    print("Finaal:")
+    print(gegevens)
+    gegevens.to_csv("gegevensHoLe"+str(aantal)+".csv")
+
     # titel = '\n' + sys.argv[2] + ": F1" + '\n'
     # print(titel)
-    punten = 20
-    bounds = {'gamma':(0.1,1.0),'xi':(0.1,1.0),'eta':(0.001,0.1)}
+    # punten = 60
+    # bounds = {'gamma':(0.1,1.0),'xi':(0.1,1.0),'eta':(0.001,0.1)}
     # boF1 = BayesianOptimization(f=toOptSilentF1,pbounds=bounds)
     # boF1.maximize(n_iter=punten)
     # fl = open("besteParams.txt",'a')
@@ -512,15 +581,15 @@ if __name__ == "__main__":
     # fl.write('\n')
     # fl.write('\n')
     # fl.close
-    titel = '\n' + sys.argv[2] + ": NMI" + '\n'
-    print(titel)
-    boNMI = BayesianOptimization(f=toOptSilentNMI,pbounds=bounds)
-    boNMI.maximize(n_iter=punten)
-    fl = open("besteParams.txt",'a')
-    fl.write(str(sys.argv))
-    fl.write('\n')
-    fl.write("NMI\n")
-    fl.write(str(boNMI.max))
-    fl.write('\n')
-    fl.write('\n')
-    fl.close
+    # titel = '\n' + sys.argv[2] + ": NMI" + '\n'
+    # print(titel)
+    # boNMI = BayesianOptimization(f=toOptSilentNMI,pbounds=bounds)
+    # boNMI.maximize(n_iter=punten)
+    # fl = open("besteParams.txt",'a')
+    # fl.write(str(sys.argv))
+    # fl.write('\n')
+    # fl.write("NMI\n")
+    # fl.write(str(boNMI.max))
+    # fl.write('\n')
+    # fl.write('\n')
+    # fl.close
