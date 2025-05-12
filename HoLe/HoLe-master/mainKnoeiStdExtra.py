@@ -529,8 +529,8 @@ if __name__ == "__main__":
     prs[('tolokers',"NMI")] = {'eta': 0.08722, 'gamma': 0.8878, 'xi': 0.7451}
 
     aantal = 5;
-    datasets = ['Pubmed','Cora','Citeseer']
-    metrieken = ["F1","NMI"]
+    datasets = ['chameleon','squirrel','tolokers','minesweeper']
+    metrieken = ["NMI"]
     tot = len(datasets) * len(metrieken)
     gegevens = pd.DataFrame()
     teller = 0
@@ -568,7 +568,7 @@ if __name__ == "__main__":
     clear()
     print("Finaal:")
     print(gegevens)
-    gegevens.to_csv("gegevensHoLeCoraCiteseerPubmed"+str(aantal)+".csv")
+    gegevens.to_csv("gegevensHoLeChmlnSqrrlTlkrsMnswpr"+str(aantal)+".csv")
 
     # titel = '\n' + sys.argv[2] + ": F1" + '\n'
     # print(titel)
