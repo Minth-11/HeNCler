@@ -197,7 +197,7 @@ if __name__ == "__main__":
             "amazon-ratings": myValue,
             "minesweeper": myValue,
             "tolokers": myValue,
-        }
+        }features
 
         myValue = [gamma]
 
@@ -269,7 +269,7 @@ if __name__ == "__main__":
         myValue = [8]
 
         gsl_epochs_list = {
-            "Cora": [5],
+            "Cora": [5],features
             "Citeseer": [5],
             "ACM": [10],
             "Pubmed": [3],
@@ -290,7 +290,7 @@ if __name__ == "__main__":
 
         myValue = 0
 
-        regularization = {
+        regularization = {features
             "Cora": 1,
             "Citeseer": 0,
             "ACM": 0,
